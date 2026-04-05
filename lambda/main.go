@@ -39,7 +39,7 @@ func handleRequest(ctx context.Context, request events.LambdaFunctionURLRequest)
 		log.Fatal(err)
 	}
 
-	args := []string{"--transactionID", "123456789"}
+	args := []string{"123456789"}
 	errCode, errMessage, cmdOutput = executeExternalCommand("./msc", args)
 	if errCode != 0 {
 		log.Println("> ERR " + errMessage)

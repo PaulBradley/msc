@@ -3,63 +3,39 @@ using System.Text;
 using WeCantSpell.Hunspell;
 using System.Text.RegularExpressions;
 
-string transactionID = "";
+string fileToProcess = args[0];
 
-if(args.Length == 1)
+if(Environment.GetEnvironmentVariable("LAMBDA_TASK_ROOT") == null)
 {
-    transactionID = validateArg(args[0]);
-}
-
-if(args.Length == 2)
-{
-    Console.WriteLine("ARG1 = " + args[1]);
-    transactionID = args[1];
-}
-
-if(transactionID == "TESTING")
-{
-    string input = "Patient was given paracetamool on Thurrsday";
-    // string input = "Patient was given a drink and feels fine";
-
-    input = checkSpellings(input, transactionID);
-    // input = returnFormattedJSON(input);
-    Console.WriteLine(input);
-} else
-{
-    Console.WriteLine("TRANSACTION ID : " + transactionID);
-
     try
     {
-        string input = File.ReadAllText("/tmp/" + transactionID + ".txt");
-        input = checkSpellings(input, transactionID);
-        // input = returnFormattedJSON(input);
-        File.WriteAllText("/tmp/" + transactionID + ".json", input);
+        Console.WriteLine("msc - Medical Spell Checker");
+
+        string resultsFile = fileToProcess + ".json";
+        string data = File.ReadAllText(fileToProcess);
+        data = checkSpellings(data, fileToProcess);
+        File.WriteAllText(resultsFile, data);
+        Console.WriteLine($"Results written to : {resultsFile}");
     }
     catch (Exception Ex)
     {
         Console.WriteLine(Ex.Message);
     }
 }
-
-Console.WriteLine("Bye from MSC");
-
-
-static string validateArg(string arg)
+else
 {
-    Console.WriteLine("validateArg" + arg);
-
-    var parts = arg.Split(['='], 2);
-    if (parts.Length == 2 && parts[0] == "--transactionID")
+    Console.WriteLine("msc - invoked from Lambda function");
+    try
     {
-        return parts[1];
+        string input = File.ReadAllText("/tmp/" + fileToProcess + ".txt");
+        input = checkSpellings(input, fileToProcess);
+        File.WriteAllText("/tmp/" + fileToProcess + ".json", input);
     }
-    else
+    catch (Exception Ex)
     {
-        Environment.Exit(1);
-        return "";
+        Console.WriteLine(Ex.Message);
     }
 }
-
 
 static string checkSpellings (string input, string transaction)
 {
