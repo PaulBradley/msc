@@ -53,6 +53,9 @@ func handleRequest(ctx context.Context, request events.LambdaFunctionURLRequest)
 		log.Println("> ERR " + err.Error())
 	}
 
+	os.Remove("/tmp/" + fileName + ".txt")
+	os.Remove("/tmp/" + fileName + ".json")
+
 	return Response(200, string(result)), nil
 }
 
