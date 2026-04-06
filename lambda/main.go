@@ -9,6 +9,7 @@ import (
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
+	"github.com/oklog/ulid/v2"
 )
 
 func main() {
@@ -30,28 +31,28 @@ func handleRequest(ctx context.Context, request events.LambdaFunctionURLRequest)
 
 	if len(body) == 0 {
 		return Response(400, "Bad Request - Missing body text"), nil
-
 	}
 
-	// write the input data to disk
-	err := os.WriteFile("/tmp/123456789.txt", []byte(body), 0644)
+	// create a random file name based on a ULID
+	// & write the contents of the body to the file
+	fileName := ulid.Make().String()
+	err := os.WriteFile("/tmp/"+fileName+".txt", []byte(body), 0644)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	args := []string{"123456789"}
+	args := []string{fileName}
 	errCode, errMessage, cmdOutput = executeExternalCommand("./msc", args)
 	if errCode != 0 {
 		log.Println("> ERR " + errMessage)
+		log.Println("> ERR " + cmdOutput)
 	}
-	log.Println(cmdOutput)
 
-	result, err = os.ReadFile("/tmp/123456789.json")
+	result, err = os.ReadFile("/tmp/" + fileName + ".json")
 	if err != nil {
 		log.Println("> ERR " + err.Error())
 	}
 
-	log.Println("200:")
 	return Response(200, string(result)), nil
 }
 
@@ -91,6 +92,5 @@ func executeExternalCommand(executable string, arguments []string) (errorCode in
 		return -1, errorMsg, ""
 	}
 
-	log.Println("INFO: Success" + commandContext)
 	return 0, "", string(out)
 }
