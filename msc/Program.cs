@@ -2,8 +2,11 @@
 using System.Text;
 using WeCantSpell.Hunspell;
 using System.Text.RegularExpressions;
+using System.Diagnostics;
 
-string fileToProcess = args[0];
+string fileToProcess = string.Empty;
+string data = string.Empty;
+string resultsFile = string.Empty;
 
 if(Environment.GetEnvironmentVariable("LAMBDA_TASK_ROOT") == null)
 {
@@ -11,29 +14,72 @@ if(Environment.GetEnvironmentVariable("LAMBDA_TASK_ROOT") == null)
     {
         Console.WriteLine("msc - Medical Spell Checker");
 
-        string resultsFile = fileToProcess + ".json";
-        string data = File.ReadAllText(fileToProcess);
+        if (Console.IsInputRedirected)
+        {
+            fileToProcess = args[0];
+            using var stdin = Console.OpenStandardInput();
+            using var sr = new StreamReader(stdin, Console.InputEncoding ?? Encoding.UTF8);
+            data = await sr.ReadToEndAsync();
+        }
+        else
+        {
+            fileToProcess = args[0];
+            resultsFile = fileToProcess + ".json";
+            data = File.ReadAllText(fileToProcess);
+        }
+
+        long startTime = Stopwatch.GetTimestamp();
         data = checkSpellings(data, fileToProcess);
-        File.WriteAllText(resultsFile, data);
-        Console.WriteLine($"Results written to : {resultsFile}");
+        TimeSpan elapsedTime = Stopwatch.GetElapsedTime(startTime);
+       
+        if (Console.IsInputRedirected)
+        {
+            using var stdout = Console.OpenStandardOutput();
+            using var sw = new StreamWriter(stdout, Console.OutputEncoding ?? Encoding.UTF8) { AutoFlush = true };
+            await sw.WriteAsync(data);
+            Environment.Exit(0);
+        }
+        else
+        {
+            File.WriteAllText(resultsFile, data);
+            Console.WriteLine($"Results written to : {resultsFile}");
+        }
+
+        Console.WriteLine($"Spellchecker duration : {elapsedTime}");
+        Environment.Exit(0);
     }
     catch (Exception Ex)
     {
-        Console.WriteLine(Ex.Message);
+        Console.Error.WriteLine(Ex.Message);
+        Environment.Exit(1);
     }
 }
 else
 {
-    Console.WriteLine("msc - invoked from Lambda function");
     try
     {
-        string input = File.ReadAllText("/tmp/" + fileToProcess + ".txt");
-        input = checkSpellings(input, fileToProcess);
-        File.WriteAllText("/tmp/" + fileToProcess + ".json", input);
+        // when invoked from lambda function ALWAYS use
+        // STDIN as the source for the data to spellcheck
+        if (Console.IsInputRedirected)
+        {
+            fileToProcess = args[0];
+            using var stdin = Console.OpenStandardInput();
+            using var sr = new StreamReader(stdin, Console.InputEncoding ?? Encoding.UTF8);
+            data = await sr.ReadToEndAsync();
+
+            data = checkSpellings(data, fileToProcess);
+
+            using var stdout = Console.OpenStandardOutput();
+            using var sw = new StreamWriter(stdout, Console.OutputEncoding ?? Encoding.UTF8) { AutoFlush = true };
+            await sw.WriteAsync(data);
+            Environment.Exit(0);
+        }
+        Environment.Exit(1);
     }
     catch (Exception Ex)
     {
-        Console.WriteLine(Ex.Message);
+        Console.Error.WriteLine(Ex.Message);
+        Environment.Exit(1);
     }
 }
 
@@ -46,10 +92,6 @@ static string checkSpellings (string input, string transaction)
         spellings.Columns.Add("Word");
         spellings.Columns.Add("Suggestions");
 
-        string spellCheckedResult = "";
-
-        input = Regex.Replace(input, @"(?<=[a-zA-Z])\.!p!(?=[a-zA-Z])", ". ");
-        input = Regex.Replace(input, @"(?<=[a-zA-Z])!p!(?=[a-zA-Z])", " ");
         input = Regex.Replace(input, @"(?<=[a-zA-Z])\.(?=[a-zA-Z])", ". ");
         input = Regex.Replace(input, @"(?<=[a-zA-Z])/(?=[a-zA-Z])", " / ");
         input = input.Replace("\n", " ");
@@ -62,16 +104,9 @@ static string checkSpellings (string input, string transaction)
         foreach (string word in words)
         {
             string check = word;
-            check = check.Trim();
 
-            if (check.Length == 0 || check == "/")
+            if (check.Length > 1)
             {
-                spellCheckedResult += $"{word}";
-            }
-            else
-            {
-                string preRemoved = check;
-                check = check.Replace("!p!", "");
                 check = check.Replace(",", "");
                 check = check.Replace(".", "");
                 check = check.Replace("(", "");
@@ -83,29 +118,19 @@ static string checkSpellings (string input, string transaction)
                 }
                 check = check.Trim();
 
-                if(word != "!p!") {
-                    if (!dictionary.Check(check))
-                    {
-                        string suggestion = "";
-                        IEnumerable<string> suggestions = dictionary.Suggest(check);
-                        foreach (var correction in suggestions)
-                        {
-                            suggestion = suggestion + correction + "^";
-                        }
-
-                        DataRow wordRow = spellings.NewRow();
-                        wordRow["Word"] = word;
-                        wordRow["Suggestions"] = suggestion;
-                        spellings.Rows.Add(wordRow);
-                    }
-                    else
-                    {
-                        spellCheckedResult += $"{word} ";
-                    }
-                }
-                else
+                if (!dictionary.Check(check))
                 {
-                    spellCheckedResult += $"{word} ";
+                    string suggestion = "";
+                    IEnumerable<string> suggestions = dictionary.Suggest(check);
+                    foreach (var correction in suggestions)
+                    {
+                        suggestion = suggestion + correction + "^";
+                    }
+
+                    DataRow wordRow = spellings.NewRow();
+                    wordRow["Word"] = word;
+                    wordRow["Suggestions"] = suggestion;
+                    spellings.Rows.Add(wordRow);
                 }
             }
         }
